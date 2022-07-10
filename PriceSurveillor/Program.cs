@@ -1,11 +1,12 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using Newtonsoft.Json.Linq;
 
 namespace PriceSurveillor
 {
     internal class Program
     {
-        static void Main(string[] args)
+        static void Main()
         {
             HttpClient client = new();
             string rawHTML = client.GetAsync("http://www.allkeyshop.com/blog/buy-steam-gift-card-cd-key-compare-prices/").GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult();
@@ -44,41 +45,80 @@ namespace PriceSurveillor
             var FeeRoot = JObject.Parse(rawFeesJSON);
             var OfferRoot = JObject.Parse(rawOffersJSON);
 
-
-            string[] allowedEditions = { "448", "995", "1107", "1129", "1344", "1586" , "1634" , "2005", "tl50", "tl100"};
-
             JObject newList;
-            string[] ids = { };
-            string[] merchants;
-
+            List<string> ids = new();
 
             foreach (dynamic x in OfferRoot["offers"])
             {
-                if (allowedEditions.ToList().Contains((string)x.edition))
+                if ((string)x.region == "127" || (string)x.region == "2574")
                 {
-                    ids += x.id;
+                    ids.Add((string)x.id);
                 }
 
             }
 
             newList = JObject.FromObject(new
             {
-                offers = 
+                offers =
                 from offer in OfferRoot["offers"]
-                where offer["id"] in ids
+                where ids.Contains(offer["id"].ToString())
                 select new
                 {
-                    merchant = OfferRoot["merchants"][offer["merchant"]]["name"]
+                    id = offer["id"],
+                    url = offer["affiliateUrl"],
+                    edition = offer["edition"],
+                    rawprice = offer["price"]?["eur"]?["priceWithoutCoupon"],
+                    coupon = offer["price"]["eur"]["bestCoupon"].HasValues ? offer["price"]?["eur"]?["bestCoupon"]?["code"] : null,
+                    couponvalue = offer["price"]["eur"]["bestCoupon"].HasValues ? offer["price"]?["eur"]?["bestCoupon"]?["discountValue"] : null,
+                    pricewithcoupon = offer["price"]?["eur"]?["price"],
+                    paypalfee = FeeRoot[(string?)offer["merchant"]]?["paypal"]?["9007199254740992"]?["a"],
+                    cardfee = FeeRoot[(string?)offer["merchant"]]?["card"]?["9007199254740992"]?["a"],
+                    merchant = OfferRoot["merchants"]?[(string?)offer["merchant"]]?["name"]
                 }
-
             });
 
-            Console.WriteLine(newList);
-
-            foreach (var y in FeeRoot)
+            List<Tuple<string, int>> editions = new()
             {
-                // Do stuffs
+                new( "448", 5 ),
+                new( "1129", 10 ),
+                new( "1107", 20 ),
+                new( "tl50", 50 ),
+                new( "tl100", 100 ),
+                new( "1344", 200 ),
+                new( "2005", 250 ),
+                new( "995", 250 ),
+                new( "1586", 300 )
+            };
+
+            // edition | id | price
+            List<Tuple<string, string, double>> cheapest = new();
+
+            foreach (dynamic x in newList["offers"])
+            {
+                var edition_list = editions.Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item2);
+                bool flag = edition_list.ToArray().Length > 0;
+
+                if (!flag) continue;
+
+                double fee = ((x["paypalfee"] != null || x["cardfee"] != null) ? ((double)x["paypalfee"] < (double)x["cardfee"]) : false) ? (double)x["paypalfee"] : (x["cardfee"] != null ? (double)x["cardfee"] : (x["paypalfee"] != null ? (double)x["paypalfee"] : 1));
+                if (fee == 1) continue;
+
+                
+                double effectiveprrice = Math.Round((double)x["pricewithcoupon"] * fee / edition_list.First(), 4);
+
+                if (!cheapest.Select(x => x.Item1).Contains((string)x["edition"]))
+                {
+                    cheapest.Add(new Tuple<string, string, double>((string)x["edition"], (string)x["id"], effectiveprrice));
+                }
+
+                else if (cheapest.Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item3).First() > effectiveprrice)
+                {
+                    cheapest.Remove(cheapest.Where(z => z.Item1 == (string)x["edition"]).First());
+                    cheapest.Add(new Tuple<string, string, double>((string)x["edition"], (string)x["id"], effectiveprrice));
+                }
             }
+
+            cheapest.ForEach(x => Console.WriteLine($"{x.Item1} | {x.Item3}"));
 
             #endregion
 
