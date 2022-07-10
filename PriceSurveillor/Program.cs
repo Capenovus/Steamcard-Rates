@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Globalization;
 using Newtonsoft.Json.Linq;
 
 namespace PriceSurveillor
@@ -76,7 +75,9 @@ namespace PriceSurveillor
                     merchant = OfferRoot["merchants"]?[(string?)offer["merchant"]]?["name"]
                 }
             });
+            #endregion
 
+            #region DataParsing
             List<Tuple<string, int>> editions = new()
             {
                 new( "448", 5 ),
@@ -103,26 +104,35 @@ namespace PriceSurveillor
                 double fee = ((x["paypalfee"] != null || x["cardfee"] != null) ? ((double)x["paypalfee"] < (double)x["cardfee"]) : false) ? (double)x["paypalfee"] : (x["cardfee"] != null ? (double)x["cardfee"] : (x["paypalfee"] != null ? (double)x["paypalfee"] : 1));
                 if (fee == 1) continue;
 
-                
-                double effectiveprrice = Math.Round((double)x["pricewithcoupon"] * fee / edition_list.First(), 4);
+                double effectiveprrice = Math.Round(edition_list.First() / (double)x["pricewithcoupon"] - edition_list.First() / (double)x["pricewithcoupon"] * (fee - 1), 4);
 
                 if (!cheapest.Select(x => x.Item1).Contains((string)x["edition"]))
                 {
                     cheapest.Add(new Tuple<string, string, double>((string)x["edition"], (string)x["id"], effectiveprrice));
                 }
 
-                else if (cheapest.Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item3).First() > effectiveprrice)
+                else if (cheapest.Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item3).First() < effectiveprrice)
                 {
                     cheapest.Remove(cheapest.Where(z => z.Item1 == (string)x["edition"]).First());
                     cheapest.Add(new Tuple<string, string, double>((string)x["edition"], (string)x["id"], effectiveprrice));
                 }
             }
 
-            cheapest.ForEach(x => Console.WriteLine($"{x.Item1} | {x.Item3}"));
+            cheapest = cheapest.OrderByDescending(x => x.Item3).ToList();
+            cheapest.ForEach(x =>
+            {
+                var ident = newList["offers"].Where(z => (string)z["id"] == x.Item2);
+                var coupon = ident.Select(z => z["coupon"]).First();
+                var edi = editions.Where(z => x.Item1 == z.Item1).Select(x => x.Item2).First();
 
+                string str = (Convert.ToString(coupon).Length > 0) ? ($"{edi}TRY | {x.Item3} TRY/EUR | {coupon.ToString().Replace("-", "")} | {ident.Select(z => z["merchant"]).First()} | {ident.Select(z => z["url"]).First()}") : ($"{edi}TRY | {x.Item3} TRY/EUR | {ident.Select(z => z["merchant"]).First()} | {ident.Select(z => z["url"]).First()}");
+
+                Console.WriteLine(str);
+            });
             #endregion
 
-            Console.Read();
+            Console.Write("\nPress any key to continue...");
+            Console.ReadKey();
         }
     }
 }
