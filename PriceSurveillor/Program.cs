@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Drawing;
 using Newtonsoft.Json.Linq;
 using OfficeOpenXml;
 
@@ -28,6 +29,7 @@ namespace PriceSurveillor
             Process node = new();
             node.StartInfo.FileName = "node";
             node.StartInfo.Arguments = @"node\priceScript.js";
+            node.StartInfo.WorkingDirectory = Environment.CurrentDirectory;
             node.StartInfo.UseShellExecute = false;
             node.StartInfo.RedirectStandardOutput = true;
             node.StartInfo.CreateNoWindow = true;
@@ -109,117 +111,141 @@ namespace PriceSurveillor
 
                     #region DataParsing
 
-                    // edition | id | price
-                    List<Tuple<string, string, double>> cheapest = new();
-
-
-                    // store, [ edition, id, price ]
-                    List<Tuple<string, List<Tuple<string, string, double>>>> StoreCheapest = new();
-
+                    // store, [ edition, id, price, amount ]
+                    List<Tuple<string, List<Tuple<string, string, double, double>>>> StoreCheapest = new();
 
                     foreach (dynamic x in newList["offers"])
                     {
                         var edition_list = Editions.Where(z => z.Item1 == Currency).Where(z => z.Item2 == (string)x["edition"]).Select(x => x.Item3);
-                        bool flag = edition_list.ToArray().Length > 0;
-
+                        bool flag = edition_list.ToArray().Any();
                         if (!flag) continue;
+                        double amount = edition_list.First();
 
                         double fee = ((x["paypalfee"] != null && x["cardfee"] != null) ? ((double)x["paypalfee"] < (double)x["cardfee"]) : false) ? (double)x["paypalfee"] : (x["cardfee"] != null ? (double)x["cardfee"] : (x["paypalfee"] != null ? (double)x["paypalfee"] : 1));
                         if (fee == 1) continue;
 
-                        double effectiveprrice = Math.Round(edition_list.First() / (double)x["pricewithcoupon"] - edition_list.First() / (double)x["pricewithcoupon"] * (fee - 1), 4);
-
-                        // Total Cheapest
-                        if (!cheapest.Select(x => x.Item1).Contains((string)x["edition"]))
-                        {
-                            cheapest.Add(new Tuple<string, string, double>((string)x["edition"], (string)x["id"], effectiveprrice));
-                        }
-
-                        else if (cheapest.Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item3).First() < effectiveprrice)
-                        {
-                            cheapest.Remove(cheapest.Where(z => z.Item1 == (string)x["edition"]).First());
-                            cheapest.Add(new Tuple<string, string, double>((string)x["edition"], (string)x["id"], effectiveprrice));
-                        }
+                        double effectiveprrice = Math.Round(amount / (double)x["pricewithcoupon"] - amount / (double)x["pricewithcoupon"] * (fee - 1), 4);
 
                         // Store Cheapest
                         if (!StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x).Any())
                         {
                             StoreCheapest.Add(new((string)x["merchant"], new()));
-                            StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Add(new((string)x["edition"], (string)x["id"], effectiveprrice));
+                            StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Add(new((string)x["edition"], (string)x["id"], effectiveprrice, amount));
                         }
                         else if (!StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Where(z => z.Item1 == (string)x["edition"]).Select(x => x).Any())
                         {
-                            StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Add(new((string)x["edition"], (string)x["id"], effectiveprrice));
+                            StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Add(new((string)x["edition"], (string)x["id"], effectiveprrice, amount));
                         }
-                        else if (StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item3).First() < effectiveprrice )
+                        else if (StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item3).First() < effectiveprrice)
                         {
                             StoreCheapest.Remove(StoreCheapest.Where(z => z.Item1 == (string)x["edition"] && z.Item2.Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item1).First() == (string)x["edition"]).First());
 
-                            if (!StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x).Any()) 
+                            if (!StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x).Any())
                                 StoreCheapest.Add(new((string)x["merchant"], new()));
-                            StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Add(new((string)x["edition"], (string)x["id"], effectiveprrice));
+                            StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Add(new((string)x["edition"], (string)x["id"], effectiveprrice, amount));
                         }
                     }
-                    cheapest = cheapest.OrderByDescending(x => x.Item3).ToList();
+
+                    #region Excel
+
+                    var ws = package.Workbook.Worksheets.Add($"{Currency}/EUR");
+                    ws.Cells["A1"].Value = "Stores/Amount";
+
+                    char col = 'B';
+                    int i = 3;
+
+                    List<string> edis = new(); StoreCheapest.ForEach(x => edis.AddRange(x.Item2.Select(x => x.Item1)));
+
+                    Editions.Where(z => z.Item1 == Currency).Where(z => edis.Contains(z.Item2)).Select(x => x.Item3).ToList().ForEach(z => {
+                        ws.Cells[$"{col}1"].Value = z;
+                        ws.Cells[$"{col}1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.CenterContinuous;
+                        col++;
+                    });
+
+                    col = 'B';
+
+                    Tuple<double, string> cheapestMerchant = new(0, "");
 
                     StoreCheapest.ForEach(x =>
                     {
-                        Console.Write(x.Item1 + " : ");
-                        x.Item2.Select(x => x.Item1).ToList().ForEach(z => Console.Write(z + " | "));
-                        x.Item2.Select(x => x.Item2).ToList().ForEach(z => Console.Write(z + " | "));
-                        Console.WriteLine(x.Item2.Select(x => x.Item2).Count());
-                        Console.WriteLine("\n");
-                    });
+                        IEnumerable<JToken> ident = default;
+                        double amount = 0.0;
+                        foreach (var y in newList["offers"])
+                        {
 
-                    var ws = package.Workbook.Worksheets.Add($"{Currency}/EUR");
-                    ws.Cells["A1"].Value = "Stores";
-
-                    // Quota, Amount
-                    List<Tuple<double, double>> OfferOrder = new();
-                    char col = 'B';
-
-                    StoreCheapest.ForEach(x => 
-                    {
-                        //Console.WriteLine(x.Item1);
-
-                        //Console.WriteLine(x.Item2.Count);
-                        x.Item2.ForEach(x => Console.WriteLine(x.Item2));
-                        Console.WriteLine("nyaa~");
-                        var ident = newList["offers"].Where(z => (string)z["id"] == x.Item2.Where(y => y.Item2 == (string)z["id"]).Select(x => x.Item2).First()).Select(x => x);
+                            var id2 = x.Item2.Where(z => z.Item2 == (string)y["id"]).Select(x => x.Item2);
+                            if (id2.Any())
+                                ident = newList["offers"].Where(z => (string)z["id"] == id2.First());
+                            else
+                                continue;
+                            amount = x.Item2.Where(z => z.Item2 == (string)y["id"]).Select(x => x.Item4).First();
+                        }
                         var id = ident.Select(z => z["id"]).First();
                         var coupon = ident.Select(z => z["coupon"]).Count() > 0 ? ident.Select(z => z["coupon"]).First() : "N/A";
-                        var edi = Editions.Where(z => z.Item2 == x.Item2.Where(y => y.Item2 == (string)id).Select(x => x.Item1).First()).Select(x => x.Item3).First();
-                        Console.WriteLine(edi);
-                        var merchant = ident.Select(z => z["merchant"]).First();
-                        var price = x.Item2.Where(y => y.Item2 == (string)id).Select(z => z.Item3).First();
+                        string merchant = ident.Select(z => z["merchant"]).First().ToString();
 
+                        ws.Cells[$"A{i}"].Value = merchant;
 
-                        OfferOrder.Add(new(price, edi));
-                        ws.Cells[$"A{col + 1}"].Value = (string)merchant;
-                        ws.Cells[$"{col}1"].Value = $"{edi}";
-
-                        int row = 3;
+                        // price, amount, url
+                        List<Tuple<double, double, string>> OfferList = new();
 
                         foreach (var y in x.Item2)
                         {
-                            ws.Cells[$"{col}{row}"].Value = $"{y.Item3}";
-                            row++;
+                            string url = newList["offers"].Where(z => (string)z["id"] == y.Item2).Select(x => (string)x["url"]).First();
+                            OfferList.Add(new(y.Item3, y.Item4, url));
+                        }
+
+                        foreach (var z in OfferList)
+                        {
+                            if (cheapestMerchant.Item1 < z.Item1)
+                                cheapestMerchant = new(z.Item1, merchant);
+                            for (char j = 'B'; true; j++)
+                            {
+                                if (ws.Cells[$"{j}1"].Value.ToString() == z.Item2.ToString())
+                                {
+                                    var cell = ws.Cells[$"{j}{i}"];
+                                    cell.Value = z.Item1;
+                                    cell.Style.Font.UnderLine = true;
+                                    cell.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.None;
+                                    cell.Style.Font.Color.SetColor(Color.Blue);
+                                    cell.Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.CenterContinuous;
+                                    cell.Hyperlink = new(z.Item3);
+                                    break;
+                                }
+                            }
+                        }
+
+                        OfferList = OfferList.OrderByDescending(z => z.Item1).ToList();
+                        for (char j = 'B'; true; j++)
+                        {
+                            if (ws.Cells[$"{j}1"].Value.ToString() == OfferList.First().Item2.ToString())
+                            {
+                                var cell = ws.Cells[$"{j}{i}"];
+                                cell.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                                cell.Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                                break;
+                            }
                         }
 
                         col++;
-
-                        //ws.Cells[$"{col}1"].Value = $"{x.Item2}";
-                        //ws.Cells[$"{col}3"].Value = $"{x.Item1}";
+                        i++;
                     });
 
+                    for (int j = 3; j < i; j++)
+                    {
+                        if (ws.Cells[$"A{j}"].Value.ToString() == cheapestMerchant.Item2.ToString())
+                        {
+                            ws.Cells[$"A{j}"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
+                            ws.Cells[$"A{j}"].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
+                            break;
+                        }
+                    }
                     Console.WriteLine("\n");
+                    ws.Calculate();
+                    ws.Cells[1, 1, i, 1].AutoFitColumns();
 
-                    OfferOrder = OfferOrder.OrderBy(x => x.Item2).ToList();
-
+                    #endregion
                 }
-
-
-
                 package.Save();
             }
             #endregion
