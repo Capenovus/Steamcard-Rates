@@ -3,11 +3,12 @@ using System.Drawing;
 using Newtonsoft.Json.Linq;
 using OfficeOpenXml;
 
-namespace PriceSurveillor
+
+namespace PriceSurveillorDLL
 {
-    internal class Program
+    public static class PriceSurveillor
     {
-        static void Main()
+        public static void Start()
         {
             HttpClient client = new();
             string rawHTML = client.GetAsync("http://www.allkeyshop.com/blog/buy-steam-gift-card-cd-key-compare-prices/").GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult();
@@ -156,13 +157,14 @@ namespace PriceSurveillor
 
                     List<string> edis = new(); StoreCheapest.ForEach(x => edis.AddRange(x.Item2.Select(x => x.Item1)));
 
-                    Editions.Where(z => z.Item1 == Currency).Where(z => edis.Contains(z.Item2)).Select(x => x.Item3).ToList().ForEach(z => {
+                    Editions.Where(z => z.Item1 == Currency).Where(z => edis.Contains(z.Item2)).Select(x => x.Item3).ToList().ForEach(z =>
+                    {
                         ws.Cells[$"{col}1"].Value = z;
                         ws.Cells[$"{col}1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.CenterContinuous;
                         col++;
                     });
 
-                    col ++; col++;
+                    col++; col++;
                     ws.Cells[$"{col}1"].Value = "Coupon Code";
                     ws.Cells[$"{col}1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.CenterContinuous;
                     char couponcol = col;
@@ -273,6 +275,7 @@ namespace PriceSurveillor
                 excel.Start();
             }
             catch { }
+
         }
     }
 }
