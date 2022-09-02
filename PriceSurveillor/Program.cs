@@ -24,6 +24,8 @@ namespace PriceSurveillor
 
             string rawPrices = client.GetAsync(FeeURL).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult();
 
+            if (!Directory.Exists("node")) Directory.CreateDirectory("node");
+
             File.WriteAllText(@"node\priceScript.js", $"{rawPrices}\nconsole.log(JSON.stringify(get_payment_fees(), null, 2));");
 
             Process node = new();
