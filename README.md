@@ -1,6 +1,9 @@
 # PriceSurveillor
 
-Generate Excel Files of Steam Gift Card prices in various currencies on various platforms.
+Generate Excel Files of Steam Gift Card prices in various currencies on various platforms. 
+
+- Result Format is CURRENCY/EUR.
+- Expected Best Option is highlighted in GREEN
 
 # Data Source
 
@@ -17,4 +20,4 @@ Optional:
 
 # Notes
 
-Platforms e.g. Kinguin may have Fees which are not calculated. The cheapest option may be different.
+Platforms e.g. Kinguin may have addtional fees which are not calculated. The cheapest option may be different.
