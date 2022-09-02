@@ -17,8 +17,8 @@ namespace PriceSurveillor
             string rawHTMLSearch = "' id='payment-fees.js-js'";
             string rawHTMLBWSearch = "src='";
 
-            var idx1 = rawHTML.IndexOf(rawHTMLSearch);
-            var idx2 = rawHTML.LastIndexOf(rawHTMLBWSearch, idx1);
+            int idx1 = rawHTML.IndexOf(rawHTMLSearch);
+            int idx2 = rawHTML.LastIndexOf(rawHTMLBWSearch, idx1);
 
             string FeeURL = rawHTML.Substring(idx2 + rawHTMLBWSearch.Length, idx1 - idx2 - rawHTMLBWSearch.Length);
 
@@ -46,11 +46,11 @@ namespace PriceSurveillor
             #endregion
 
             #region JsonParse
-            var FeeRoot = JObject.Parse(rawFeesJSON);
-            var OfferRoot = JObject.Parse(rawOffersJSON);
+            JObject FeeRoot = JObject.Parse(rawFeesJSON);
+            JObject OfferRoot = JObject.Parse(rawOffersJSON);
 
             string config = File.ReadAllText(@"config\aks.conf");
-            var ConfigRoot = JObject.Parse(config);
+            JObject ConfigRoot = JObject.Parse(config);
 
             List<string> Currencies = new();
             // Currency, Region
@@ -61,11 +61,11 @@ namespace PriceSurveillor
             foreach (var x in ConfigRoot)
             {
                 Currencies.Add(x.Key);
-                foreach (var y in ConfigRoot[x.Key]["regions"])
+                foreach (JToken y in ConfigRoot[x.Key]["regions"])
                 {
                     Regions.Add(new(x.Key, (string)y));
                 }
-                foreach (var y in ConfigRoot[x.Key]["editions"])
+                foreach (JToken y in ConfigRoot[x.Key]["editions"])
                 {
                     Editions.Add(new(x.Key, y.Path.Substring(y.Path.LastIndexOf(".") + 1), (double)y));
                 }
@@ -73,12 +73,12 @@ namespace PriceSurveillor
 
             if (File.Exists("data.xlsx")) File.Delete("data.xlsx");
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            using (var package = new ExcelPackage(new FileInfo("data.xlsx")))
+            using (ExcelPackage package = new(new FileInfo("data.xlsx")))
             {
-                foreach (var Currency in Currencies)
+                foreach (string Currency in Currencies)
                 {
 
-                    JObject newList;
+                    JObject? newList;
                     List<string> ids = new();
 
                     foreach (dynamic x in OfferRoot["offers"])
@@ -118,7 +118,7 @@ namespace PriceSurveillor
 
                     foreach (dynamic x in newList["offers"])
                     {
-                        var edition_list = Editions.Where(z => z.Item1 == Currency).Where(z => z.Item2 == (string)x["edition"]).Select(x => x.Item3);
+                        IEnumerable<double> edition_list = Editions.Where(z => z.Item1 == Currency).Where(z => z.Item2 == (string)x["edition"]).Select(x => x.Item3);
                         bool flag = edition_list.ToArray().Any();
                         if (!flag) continue;
                         double amount = edition_list.First();
@@ -150,7 +150,7 @@ namespace PriceSurveillor
 
                     #region Excel
 
-                    var ws = package.Workbook.Worksheets.Add($"{Currency}/EUR");
+                    ExcelWorksheet ws = package.Workbook.Worksheets.Add($"{Currency}/EUR");
                     ws.Cells["A1"].Value = "Stores/Amount";
 
                     char col = 'B';
@@ -174,35 +174,35 @@ namespace PriceSurveillor
                     ws.Cells[$"{col}1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.CenterContinuous;
                     col = 'B';
 
-                    Tuple<double, string> cheapestMerchant = new(0, "");
+                    Tuple<double, string?> cheapestMerchant = new(0, "");
 
                     StoreCheapest.ForEach(x =>
                     {
-                        IEnumerable<JToken> ident = default;
+                        IEnumerable<JToken>? ident = default;
                         double amount = 0.0;
-                        foreach (var y in newList["offers"])
+                        foreach (JToken y in newList["offers"])
                         {
 
-                            var id2 = x.Item2.Where(z => z.Item2 == (string)y["id"]).Select(x => x.Item2);
+                            var id2 = x.Item2.Where(z => z.Item2 == (string?)y["id"]).Select(x => x.Item2);
                             if (id2.Any())
-                                ident = newList["offers"].Where(z => (string)z["id"] == id2.First());
+                                ident = newList["offers"]?.Where(z => (string?)z["id"] == id2.First());
                             else
                                 continue;
-                            amount = x.Item2.Where(z => z.Item2 == (string)y["id"]).Select(x => x.Item4).First();
+                            amount = x.Item2.Where(z => z.Item2 == (string?)y["id"]).Select(x => x.Item4).First();
                         }
-                        string merchant = ident.Select(z => z["merchant"]).First().ToString();
+                        string? merchant = ident?.Select(z => z["merchant"]).First()?.ToString();
 
                         ws.Cells[$"A{i}"].Value = merchant;
 
                         // price, amount, url, coupon, couponval
-                        List<Tuple<double, double, string, string, double>> OfferList = new();
+                        List<Tuple<double, double, string?, string?, double?>> OfferList = new();
 
                         foreach (var y in x.Item2)
                         {
-                            var thingie = newList["offers"].Where(z => (string)z["id"] == y.Item2);
-                            string url = thingie.Select(x => (string)x["url"]).First();
-                            string coupon = thingie.Select(x => (string)x["coupon"]).First();
-                            double couponval = thingie.Select(x => (double)x["couponvalue"]).First();
+                            IEnumerable<JToken>? thingie = newList["offers"]?.Where(z => (string?)z["id"] == y.Item2);
+                            string? url = thingie?.Select(x => (string?)x["url"]).First();
+                            string? coupon = thingie?.Select(x => (string?)x["coupon"]).First();
+                            double? couponval = thingie?.Select(x => (double?)x["couponvalue"]).First();
                             OfferList.Add(new(y.Item3, y.Item4, url, coupon, couponval));
                         }
 
@@ -214,7 +214,7 @@ namespace PriceSurveillor
                             {
                                 if (ws.Cells[$"{j}1"].Value.ToString() == z.Item2.ToString())
                                 {
-                                    var cell = ws.Cells[$"{j}{i}"];
+                                    ExcelRange cell = ws.Cells[$"{j}{i}"];
                                     cell.Value = z.Item1;
                                     cell.Style.Font.UnderLine = true;
                                     cell.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.None;
@@ -238,7 +238,7 @@ namespace PriceSurveillor
                         {
                             if (ws.Cells[$"{j}1"].Value.ToString() == OfferList.First().Item2.ToString())
                             {
-                                var cell = ws.Cells[$"{j}{i}"];
+                                ExcelRange cell = ws.Cells[$"{j}{i}"];
                                 cell.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
                                 cell.Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
                                 break;
@@ -251,7 +251,7 @@ namespace PriceSurveillor
 
                     for (int j = 3; j < i; j++)
                     {
-                        if (ws.Cells[$"A{j}"].Value.ToString() == cheapestMerchant.Item2.ToString())
+                        if (ws.Cells[$"A{j}"].Value.ToString() == cheapestMerchant?.Item2?.ToString())
                         {
                             ws.Cells[$"A{j}"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
                             ws.Cells[$"A{j}"].Style.Fill.BackgroundColor.SetColor(Color.LightGreen);
@@ -267,7 +267,7 @@ namespace PriceSurveillor
             }
             #endregion
 
-            var excel = new Process();
+            Process excel = new();
             excel.StartInfo.FileName = ".\\data.xlsx";
             excel.StartInfo.UseShellExecute = true;
             try
