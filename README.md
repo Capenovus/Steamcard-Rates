@@ -1,6 +1,6 @@
 # PriceSurveillor
 
-Generate Excel Files of Steam Gift Card prices in various currencies on various platforms. 
+Generate Excel Files of Steam Gift Card prices of various currencies on various platforms. 
 
 - Result Format is CURRENCY/EUR.
 - Expected Best Option is highlighted in GREEN
