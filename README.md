@@ -1,4 +1,4 @@
-# PriceSurveillor
+# Steamcard Rates
 
 Generate Excel Files of Steam Gift Card prices of various currencies on various platforms. 
 
