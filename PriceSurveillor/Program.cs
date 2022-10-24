@@ -140,7 +140,7 @@ namespace PriceSurveillor
                         }
                         else if (StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x.Item2).First().Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item3).First() < effectiveprrice)
                         {
-                            StoreCheapest.Remove(StoreCheapest.Where(z => z.Item1 == (string)x["edition"] && z.Item2.Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item1).First() == (string)x["edition"]).First());
+                            StoreCheapest.Remove(StoreCheapest.Where(z => z.Item1 == (string)x["merchant"] && z.Item2.Where(z => z.Item1 == (string)x["edition"]).Select(x => x.Item1).First() == (string)x["edition"]).First());
 
                             if (!StoreCheapest.Where(z => z.Item1 == (string)x["merchant"]).Select(x => x).Any())
                                 StoreCheapest.Add(new((string)x["merchant"], new()));
